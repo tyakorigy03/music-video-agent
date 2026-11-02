@@ -1,10 +1,10 @@
 {
   "songs": {
     "one more night - bruno mars.mp3": {
-      "attempts": 1,
+      "attempts": 2,
       "error": "RuntimeError: fewer than 2 videos could be downloaded (YouTube blocking? see README, YT_COOKIES)",
       "status": "failed",
-      "updated": "2026-11-02T15:11:58+00:00"
+      "updated": "2026-11-02T23:04:45+00:00"
     }
   },
   "video_use": {}
