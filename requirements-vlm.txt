@@ -1,0 +1,6 @@
+# Optional: SmolVLM2 frame review (USE_VLM=1). CPU-only torch keeps the install small.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+transformers>=4.49
+pillow
+num2words

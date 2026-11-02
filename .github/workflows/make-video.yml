@@ -1,0 +1,119 @@
+name: make-music-video
+
+on:
+  schedule:
+    - cron: "0 */5 * * *"        # every 5 hours (GitHub may start it a few minutes late)
+  workflow_dispatch:
+    inputs:
+      song:
+        description: "Optional: exact file name inside songs/ to (re)process now"
+        required: false
+        default: ""
+      force:
+        description: "Re-do the song even if it is already marked done"
+        type: boolean
+        default: false
+      use_vlm:
+        description: "Enable the optional SmolVLM2 frame review (slower)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # commit state.json back
+  models: read      # lets the agent use GitHub Models with the built-in token (free tier)
+
+concurrency:
+  group: make-video          # never run two builds at once
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      SONG_INPUT: ${{ inputs.song }}
+      FORCE_INPUT: ${{ inputs.force }}
+      USE_VLM: ${{ inputs.use_vlm && '1' || '0' }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Cheap check first (standard library only): exit quickly when there is nothing to do.
+      - name: Is there a song waiting?
+        id: pending
+        run: |
+          if [ -n "$SONG_INPUT" ]; then echo "has_work=true" >> "$GITHUB_OUTPUT"; else python run.py --check-pending; fi
+
+      - uses: denoland/setup-deno@v2          # yt-dlp needs a JS runtime to solve YouTube challenges
+        if: steps.pending.outputs.has_work == 'true'
+        with:
+          deno-version: v2.x
+
+      - name: System packages
+        if: steps.pending.outputs.has_work == 'true'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg libgl1 libglib2.0-0
+
+      - uses: actions/cache@v4
+        if: steps.pending.outputs.has_work == 'true'
+        with:
+          path: |
+            .cache/downloads
+            .cache/analysis
+          key: mv-cache-${{ github.run_id }}
+          restore-keys: mv-cache-
+
+      - name: Python packages
+        if: steps.pending.outputs.has_work == 'true'
+        run: |
+          pip install -r requirements.txt
+          if [ "$USE_VLM" = "1" ]; then pip install -r requirements-vlm.txt; fi
+
+      - name: YouTube cookies (optional secret YT_COOKIES)
+        if: steps.pending.outputs.has_work == 'true'
+        env:
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
+        run: |
+          if [ -n "$YT_COOKIES" ]; then
+            mkdir -p .cache && printf '%s' "$YT_COOKIES" > .cache/cookies.txt
+            echo "YT_COOKIES_FILE=$PWD/.cache/cookies.txt" >> "$GITHUB_ENV"
+          fi
+
+      - name: Make the video
+        if: steps.pending.outputs.has_work == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARGS=""
+          if [ -n "$SONG_INPUT" ]; then ARGS="--song songs/$SONG_INPUT"; fi
+          if [ "$FORCE_INPUT" = "true" ]; then ARGS="$ARGS --force"; fi
+          python run.py $ARGS
+
+      - name: Upload the finished video(s)
+        if: always() && steps.pending.outputs.has_work == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: music-video-${{ github.run_number }}
+          path: |
+            output/**/*.mp4
+            output/**/*.jpg
+            output/**/*.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Save progress (state.json)
+        if: always() && steps.pending.outputs.has_work == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "state: update after run ${{ github.run_number }} [skip ci]"
+            git pull --rebase --autostash || true
+            git push
+          fi

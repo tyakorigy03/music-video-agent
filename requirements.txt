@@ -1,0 +1,6 @@
+# Core pipeline. mediapipe pulls in opencv-contrib-python itself.
+numpy<2
+scipy
+librosa>=0.10.2
+mediapipe==0.10.14
+yt-dlp[default]
