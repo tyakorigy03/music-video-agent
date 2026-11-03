@@ -89,10 +89,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ARGS=""
-          if [ -n "$SONG_INPUT" ]; then ARGS="--song songs/$SONG_INPUT"; fi
-          if [ "$FORCE_INPUT" = "true" ]; then ARGS="$ARGS --force"; fi
-          python run.py $ARGS
+          ARGS=()
+          if [ -n "$SONG_INPUT" ]; then ARGS+=(--song "songs/$SONG_INPUT"); fi
+          if [ "$FORCE_INPUT" = "true" ]; then ARGS+=(--force); fi
+          python run.py "${ARGS[@]}"
 
       - name: Upload the finished video(s)
         if: always() && steps.pending.outputs.has_work == 'true'
