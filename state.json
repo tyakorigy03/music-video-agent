@@ -3,9 +3,19 @@
     "one more night - bruno mars.mp3": {
       "attempts": 3,
       "error": "RuntimeError: fewer than 2 videos could be downloaded (YouTube blocking? see README, YT_COOKIES)",
-      "status": "failed",
-      "updated": "2026-11-03T05:52:02+00:00"
+      "output": "output/one-more-night-bruno-mars/one-more-night-bruno-mars.mp4",
+      "status": "done",
+      "updated": "2026-11-03T07:54:39+00:00",
+      "videos": [
+        "fLexgOxsZu0",
+        "ekzHIouo8Q4",
+        "UqyT8IEBkvY"
+      ]
     }
   },
-  "video_use": {}
+  "video_use": {
+    "UqyT8IEBkvY": 1,
+    "ekzHIouo8Q4": 1,
+    "fLexgOxsZu0": 1
+  }
 }
