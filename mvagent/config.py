@@ -21,6 +21,14 @@ FPS = 24
 MAX_ATTEMPTS = 3                                 # give up on a song after this many failures
 PRUNE_DOWNLOADS_GB = float(os.getenv("PRUNE_DOWNLOADS_GB", "3"))
 
+# Downloading. "auto" tries the y2mate-like converter API first, then yt-dlp.
+# Use "api" to never touch yt-dlp, or "ytdlp" to disable the API.
+DOWNLOADER = os.getenv("DOWNLOADER", "auto").lower()
+API_BASE_URL = os.getenv("Y2MATE_API_BASE", "https://cnv.cx")
+API_VIDEO_QUALITY = os.getenv("API_VIDEO_QUALITY", "1080")
+API_AUDIO_BITRATE = os.getenv("API_AUDIO_BITRATE", "128")
+INNERTUBE_KEY = os.getenv("YT_INNERTUBE_KEY", "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8")
+
 # Agent brain (optional). Defaults to GitHub Models, authenticated by the workflow's GITHUB_TOKEN.
 USE_LLM = os.getenv("USE_LLM", "1") == "1"
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://models.github.ai/inference")

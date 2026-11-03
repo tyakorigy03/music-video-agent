@@ -60,7 +60,7 @@ def choose_videos(song, state, local_dir):
         except Exception as e:
             log(f"  download failed ({type(e).__name__}: {str(e)[:200]}) -> trying next candidate")
     if len(got) < 2:
-        raise RuntimeError("fewer than 2 videos could be downloaded (YouTube blocking? see README, YT_COOKIES)")
+        raise RuntimeError("fewer than 2 videos could be downloaded (converter API and yt-dlp both failed; see README)")
     return got
 
 

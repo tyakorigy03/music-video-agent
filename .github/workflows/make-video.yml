@@ -48,7 +48,7 @@ jobs:
         run: |
           if [ -n "$SONG_INPUT" ]; then echo "has_work=true" >> "$GITHUB_OUTPUT"; else python run.py --check-pending; fi
 
-      - uses: denoland/setup-deno@v2          # yt-dlp needs a JS runtime to solve YouTube challenges
+      - uses: denoland/setup-deno@v2          # only for the optional yt-dlp fallback downloader
         if: steps.pending.outputs.has_work == 'true'
         with:
           deno-version: v2.x

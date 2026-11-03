@@ -22,7 +22,7 @@ treated as a title and the search is much weaker.
 1. Create a **private** repository and push this folder to it.
 2. Settings → Actions → General → **Workflow permissions: Read and write**.
 3. Add songs to `songs/` and push. Run it now from Actions → *make-music-video* → *Run workflow*, or wait for the schedule.
-4. Optional secret `YT_COOKIES` (see "If YouTube blocks the runner").
+4. Optional secret `YT_COOKIES` — only needed for the yt-dlp fallback downloader (see "Limits you should know about").
 
 ## Where to find the video
 
@@ -33,7 +33,8 @@ Artifacts are kept 30 days (`retention-days` in the workflow). The run summary l
 ## How the agent decides (mvagent/selector.py)
 
 1. Builds queries from the artist: "official video", "live performance", "session", "music video".
-2. Searches YouTube with yt-dlp (metadata only).
+2. Searches YouTube through the public InnerTube API (metadata only, no yt-dlp, no login). If that fails
+   it falls back to a yt-dlp search.
 3. Scores candidates by rule: official channel / VEVO, "official video", live or performance footage,
    sensible length, popularity; and **excludes** lyric videos, audio uploads, covers, reactions, shorts,
    compilations, remixes, interviews, and **the song's own video** (it wants other footage of the artist).
@@ -67,10 +68,14 @@ adds a few minutes. **This part could not be tested by the author** (see below).
 
 ## Limits you should know about
 
-* **YouTube may block GitHub's servers** ("Sign in to confirm you're not a bot"). Fix: export your YouTube
-  cookies with a browser extension in Netscape format (use a throwaway Google account), and save the text as
-  the repository secret `YT_COOKIES`. Cookies expire; refresh them if downloads start failing. Failed songs are
-  retried up to 3 times, then skipped (see `state.json`).
+* **Downloads use a converter API by default** — the same flow as y2mate: ask `cnv.cx` for a key, convert the
+  video id, then stream the signed `yt-dl.click` MP4. This avoids YouTube's "Sign in to confirm you're not a bot"
+  block on CI runners. `DOWNLOADER=api` never touches yt-dlp; `DOWNLOADER=ytdlp` forces the old path (default is
+  `auto`: API, then yt-dlp). Quality: `API_VIDEO_QUALITY` (default 1080); host: `Y2MATE_API_BASE`.
+  Third-party converters come and go — if the API stops working, the yt-dlp fallback plus `YT_COOKIES` still applies.
+* **yt-dlp fallback may be blocked** ("Sign in to confirm you're not a bot"). Fix: export your YouTube cookies
+  with a browser extension in Netscape format (throwaway account) and save the text as the secret `YT_COOKIES`.
+  Cookies expire; failed songs are retried up to 3 times, then skipped (see `state.json`).
 * **Rights**: the output contains other people's videos and music. Downloading may violate YouTube's terms, and
   publishing the result needs permission from the owners. Keep the repo private and treat results as personal.
 * **Free minutes**: public repos get free Actions minutes; private repos get a monthly allowance. One song takes
@@ -86,7 +91,7 @@ adds a few minutes. **This part could not be tested by the author** (see below).
 sudo apt install ffmpeg libgl1
 pip install -r requirements.txt
 python run.py --check-pending
-python run.py                                  # next pending song (needs internet + yt-dlp working)
+python run.py                                  # next pending song (needs internet; API downloader by default)
 python run.py --local-videos ./some_videos --no-state    # skip YouTube, use your own clips
 python -m pytest tests
 ```
@@ -95,8 +100,9 @@ python -m pytest tests
 
 | Part | Status |
 |---|---|
-| Name parsing, scoring/exclusion rules, ranking, state, planner invariants (15 unit tests) | passes |
+| Name parsing, scoring/exclusion rules, ranking, state, planner invariants (17 unit tests) | passes |
 | Full pipeline on real files: song analysis, frame/mouth analysis, planning, rendering, mux, contact sheet | ran end to end |
-| YouTube search/download (yt-dlp) and the GitHub Models call | **not run** (the authoring sandbox cannot reach YouTube or GitHub Models); written from the docs |
+| InnerTube search + converter-API download (live) | ran end to end against real requests (key → convert → MP4 stream) |
+| yt-dlp fallback and the GitHub Models call | **not run** in CI; written from the docs |
 | GitHub Actions workflow | **not run**; first run on your repo is the real test |
 | SmolVLM2 review | **not run** (no access to the model hub) |

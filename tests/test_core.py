@@ -87,6 +87,34 @@ def test_select_raises_when_search_is_blocked():
         assert "YT_COOKIES" in str(e)
 
 
+def test_search_helpers_parse_metadata():
+    assert selector._parse_clock("4:38") == 278
+    assert selector._parse_clock("1:02:03") == 3723
+    assert selector._parse_clock("") is None
+    assert selector._parse_views("14,817,810 views") == 14817810
+    assert selector._parse_views("1.2M views") == 1200000
+    assert selector._parse_views("No views") == 0
+    assert selector._text({"runs": [{"text": "a"}, {"text": "b"}]}) == "ab"
+    assert selector._text({"simpleText": "plain"}) == "plain"
+
+
+def test_select_falls_back_to_second_searcher():
+    def api_down(q, n=10):
+        raise RuntimeError("api down")
+
+    def ytdlp_ok(q, n=10):
+        return [cand("1", "KAROL G - EL BARCO (Official Video)"),
+                cand("5", "KAROL G, Tiësto - CONTIGO (Official Video)")]
+
+    old_api, old_yt = selector.search_youtube_api, selector.search_youtube
+    selector.search_youtube_api, selector.search_youtube = api_down, ytdlp_ok
+    try:
+        out = selector.select_videos(SONG, {"video_use": {}}, 2, llm=lambda *a: None)
+        assert {c["id"] for c in out[:2]} == {"1", "5"}
+    finally:
+        selector.search_youtube_api, selector.search_youtube = old_api, old_yt
+
+
 def test_llm_garbage_is_ignored(monkeypatch=None):
     config.LLM_API_KEY = "x"
     config.LLM_BASE_URL = "http://127.0.0.1:9"      # nothing listens here

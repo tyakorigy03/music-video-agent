@@ -69,6 +69,89 @@ def search_youtube(query: str, n: int = 10) -> list:
     return out
 
 
+def _text(node) -> str:
+    if not node:
+        return ""
+    if isinstance(node, str):
+        return node
+    if "simpleText" in node:
+        return node["simpleText"]
+    return "".join(r.get("text", "") for r in node.get("runs", []))
+
+
+def _parse_clock(text: str):
+    if not text:
+        return None
+    try:
+        parts = [int(p) for p in text.strip().split(":")]
+    except ValueError:
+        return None
+    sec = 0
+    for p in parts:
+        sec = sec * 60 + p
+    return sec
+
+
+def _parse_views(text: str) -> int:
+    m = re.search(r"([\d.,]+)\s*([KMB]?)", text or "", re.I)
+    if not m:
+        return 0
+    n = float(m.group(1).replace(",", ""))
+    return int(n * {"": 1, "K": 1e3, "M": 1e6, "B": 1e9}[m.group(2).upper()])
+
+
+def _video_renderers(node):
+    if isinstance(node, dict):
+        for kind in ("videoRenderer", "gridVideoRenderer", "compactVideoRenderer"):
+            if kind in node:
+                yield node[kind]
+        for v in node.values():
+            yield from _video_renderers(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _video_renderers(v)
+
+
+def search_youtube_api(query: str, n: int = 10) -> list:
+    """Search YouTube through the public InnerTube API (no yt-dlp, no login)."""
+    body = json.dumps({
+        "context": {"client": {"clientName": "WEB", "clientVersion": "2.20240101.00.00",
+                               "hl": "en", "gl": "US"}},
+        "query": query,
+    }).encode()
+    req = urllib.request.Request(
+        "https://www.youtube.com/youtubei/v1/search?prettyPrint=false&key=" + config.INNERTUBE_KEY,
+        data=body, method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"),
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=30) as r:
+        info = json.loads(r.read())
+    out, seen = [], set()
+    for v in _video_renderers(info):
+        vid = v.get("videoId")
+        if not vid or vid in seen:
+            continue
+        seen.add(vid)
+        out.append({
+            "id": vid,
+            "title": _text(v.get("title")),
+            "channel": _text(v.get("ownerText") or v.get("longBylineText")),
+            "duration": _parse_clock(_text(v.get("lengthText"))),
+            "views": _parse_views(_text(v.get("viewCountText"))),
+            "query": query,
+        })
+        if len(out) >= n:
+            break
+    if not out:
+        raise RuntimeError("InnerTube search returned no results")
+    return out
+
+
 def score(c: dict, song: dict, used: dict):
     """Return a score, or None when the candidate must be excluded."""
     title = c["title"]
@@ -168,24 +251,32 @@ def llm_pick(ranked: list, song: dict, k: int):
         return None
 
 
-def select_videos(song: dict, state: dict, k: int = None, search=search_youtube, llm=llm_pick) -> list:
+def select_videos(song: dict, state: dict, k: int = None, search=None, llm=llm_pick) -> list:
     """Return an ordered list: the first k are the picks, the rest are backups for failed downloads."""
     k = k or config.NUM_VIDEOS
     used = state.get("video_use", {})
+    searchers = [search] if search else [search_youtube_api, search_youtube]
     cands, seen = [], set()
     for q in build_queries(song):
-        try:
-            for c in search(q):
+        for fn in searchers:
+            try:
+                found = fn(q)
+            except Exception as e:
+                print(f"[selector] search failed for '{q}' ({getattr(fn, '__name__', 'search')}): "
+                      f"{type(e).__name__}: {e}")
+                continue
+            if not found:
+                continue
+            for c in found:
                 if c["id"] not in seen:
                     seen.add(c["id"])
                     cands.append(c)
-        except Exception as e:
-            print(f"[selector] search failed for '{q}': {type(e).__name__}: {e}")
+            break
     ranked = heuristic_rank(cands, song, used)
     if len(ranked) < 2:
         raise RuntimeError(
             f"Only {len(ranked)} usable videos found for '{song['title']}' by '{song['artist']}'. "
-            "If YouTube is blocking the runner, add a YT_COOKIES secret (see README)."
+            "Both the search API and yt-dlp failed. Set DOWNLOADER=api, or add a YT_COOKIES secret (see README)."
         )
     shortlist = ranked[:12]
     ids = llm(shortlist, song, k)
